@@ -1,0 +1,3 @@
+pandas
+emoji==1.7
+scikit-learn
