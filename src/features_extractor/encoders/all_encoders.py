@@ -3,11 +3,11 @@ from abc import ABC, abstractmethod
 import re
 import pandas as pd
 import math
-from DetectionUtilities.feature_extractor.encoders.encoder_factory import register_encoder
+from features_extractor.encoders.encoder_factory import register_encoder
 import ast
 from typing import Union
 import numpy as np
-import DetectionUtilities.feature_extractor.parser_utils
+import features_extractor.parser_utils
 
 
 
@@ -21,19 +21,8 @@ class Encoder(ABC):
 
     - Calculate encoding parameters from the given data using the `fit` function.
     - Encode a given series into multiple columns using the `__call__` function.
-    - Calculate normalization parameters from the given data and normalize the data using `fit_and_normalize`.
-    - Normalize a column according to the normalization parameters specified in the column name.
     """
-    def __init__(self, mean=0, std=1, fit_normalize=True):
-        """
-        Args:
-            mean: normalization mean for the encoder __repre__
-            std: normalization std for the encoder __repre__
-            fit_normalize: If set to `False`, the encoder will not calculate normalization parameters from the given data.
-        """
-        self.mean = mean
-        self.std = std
-        self.fit_normalize = fit_normalize
+
 
 
     def fit(self, to_encode:pd.Series)->None:
@@ -58,65 +47,6 @@ class Encoder(ABC):
         """
         return pd.DataFrame(data=to_encode)
 
-    def fit_and_normalize(self, to_normalize:pd.DataFrame)-> pd.DataFrame:
-        """
-        Calculate normalization parameters from the given data and normalize the data.
-        If `self.fit_normalize` is set to `False`, the normalization parameters will not be fitted, and the output will be
-        the result of the `self.normalize` function.
-
-        Args:
-            to_normalize: Data to fit the normalization parameters on and to normalize.
-
-        Returns:
-            The normalized data.
-        """
-        if self.fit_normalize:
-            normalized_data = dict()
-            for colname in to_normalize.columns:
-                data = to_normalize[colname]
-                mean = data.mean()
-                std = data.std()
-                if std == 0:
-                    std = 1
-                    logging.warning(f"[Encoder] column {colname} with std=0 - use std=1 instead")
-                m = re.match(r".*mean=([\s\d\.]+).*", colname)
-                if m:
-                    s,e = m.span(1)
-                    colname = colname[:s] + str(mean) + colname[e:]
-                
-                m = re.match(r".*std=([\s\d\.]+).*", colname)
-                if m:
-                    s,e = m.span(1)
-                    colname = colname[:s] + str(std) + colname[e:]
-                normalized_data[colname] = (data - mean)/std
-            return pd.DataFrame(data=normalized_data, index=to_normalize.index)
-        return self.normalize(to_normalize)
-
-
-
-    def normalize(self, to_normalize: pd.DataFrame) -> pd.DataFrame:
-        """
-        Normalize all the columns in the given DataFrame according to the normalization parameters specified in the
-        column names.
-
-        Args:
-            to_normalize (pd.DataFrame): The data to be normalized.
-
-        Returns:
-            pd.DataFrame: The normalized data if normalization parameters exist; otherwise, the input data remains unchanged.
-        """
-        normalized_data = dict()
-        for colname in to_normalize.columns:
-            m = re.match(f"({self.__class__.__name__}[^\|]*).*", colname)
-            mean, std = 0,1
-            if m:
-                encoder_repre = m.group(1)
-                encoder_name, args, kwargs = parser_utils.get_func_from_str(encoder_repre)
-                mean = float(kwargs.get("mean", 0))
-                std = float(kwargs.get("std", 1))
-            
-            normalized_data[colname] = (to_normalize[colname] - mean)/std
-        return pd.DataFrame(data=normalized_data, index=to_normalize.index)
 
     def __repr__(self) -> str:
         """
@@ -126,7 +56,7 @@ class Encoder(ABC):
         attributes.
 
         """
-        return f"{self.__class__.__name__}(mean={self.mean}, std={self.std})"
+        return f"{self.__class__.__name__}"
 
 
 
@@ -143,7 +73,7 @@ class CyclicEncoder(Encoder):
         Args:
             cycle: The cycle duration.
         """
-        super(CyclicEncoder, self).__init__(mean=0, std=1, fit_normalize=False)# The data of this encoder shouldn't be normalized.
+        super(CyclicEncoder, self).__init__()
         self.cycle = cycle
 
     @abstractmethod
@@ -184,8 +114,8 @@ class InRange(Encoder):
     """
     Replace all values that smaller than 'min_val' or larger than 'max_val' with None.
     """
-    def __init__(self, min_val=0, max_val=math.inf, mean=0, std=1):
-        super(InRange, self).__init__(mean=mean, std=std, fit_normalize=True)
+    def __init__(self, min_val=0, max_val=math.inf):
+        super(InRange, self).__init__()
         self.min_val = min_val
         self.max_val = max_val
 
@@ -203,7 +133,7 @@ class InRange(Encoder):
         return pd.DataFrame(data={self.__repr__(): encoded_col}, index=to_encode.index)
     
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}(mean={self.mean}, std={self.std}, min_val={self.min_val},max_val={self.max_val})"
+        return f"{self.__class__.__name__}(min_val={self.min_val},max_val={self.max_val})"
 
 
 @register_encoder
@@ -211,11 +141,11 @@ class Positive(InRange):
     """
     Replace all the negative values to None.
     """
-    def __init__(self, mean=0, std=1):
-        super(Positive, self).__init__(min_val=0, max_val=math.inf, mean=mean, std=std)
+    def __init__(self):
+        super(Positive, self).__init__(min_val=0, max_val=math.inf)
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}(mean={self.mean}, std={self.std})"
+        return f"{self.__class__.__name__}"
 
     
 @register_encoder
@@ -246,7 +176,7 @@ class IsEmpty(Encoder):
     Encode a Series of strings to boolean values. True if the string consists of only whitespaces and false otherwise
     """
     def __init__(self, empty_value_regex="^[\s]*$"):
-        super(IsEmpty, self).__init__(mean=0, std=1, fit_normalize=False) # The data of this encoder shouldn't be normalized.
+        super(IsEmpty, self).__init__()
         self.empty_value_regex = empty_value_regex
 
     def __call__(self, to_encode: pd.Series):
@@ -268,7 +198,7 @@ class DayOfWeek(CyclicEncoder):
         super(DayOfWeek, self).__init__(cycle=7)
 
     def encode_time(self, to_encode: pd.Series):
-        encoded_column =  pd.to_datetime(to_encode).dt.day_of_week
+        encoded_column =  pd.to_datetime(to_encode, format='ISO8601').dt.day_of_week
         encoded_column.name=self.__repr__()
         return encoded_column
 
@@ -285,7 +215,7 @@ class Hour(CyclicEncoder):
         super(Hour, self).__init__(cycle=24)
 
     def encode_time(self, to_encode: pd.Series):
-        encoded_column =  pd.to_datetime(to_encode).dt.hour
+        encoded_column =  pd.to_datetime(to_encode, format='ISO8601').dt.hour
         encoded_column.name=self.__repr__()
         return encoded_column
 
@@ -306,8 +236,9 @@ class CategoryOneHot(Encoder):
             invalid_category_repre: The representation to assign to rows that do not match any of the specified categories.
             valid_category_regex: A regular expression to filter categories. If not None, only categories matching this regex
                 will be considered when collecting categories in the fit function.
+                multi_categories: True is the dtype of the data is a list of categories
         """
-        super(CategoryOneHot, self).__init__(mean=0, std=1, fit_normalize=False) # The data of this encoder shouldn't be normalized.
+        super(CategoryOneHot, self).__init__()
         self.categories = categories 
         self.invalid_category_repre = invalid_category_repre
         self.valid_category_regex = valid_category_regex
@@ -318,17 +249,18 @@ class CategoryOneHot(Encoder):
             if self.multi_categories:
                 to_encode = to_encode.dropna()
                 not_empty = to_encode.loc[to_encode.apply(lambda x: len(x) > 0)]
-                self.categories = list(np.unique(np.concatenate(not_empty.values)))
+                self.categories = np.unique(np.concatenate(not_empty.values)).tolist() if len(not_empty) > 0 else []
             else:
-                self.categories = pd.unique(to_encode)
-        filtered_categories = []
+
+                self.categories = pd.unique(to_encode).tolist()
+        filtered_categories = set()
         if self.valid_category_regex is not None:
             for cat in self.categories:
                 if type(cat)==str:
                     m = re.match(self.valid_category_regex, cat)
                     if m:
                         filtered_categories.append(cat) 
-            self.categories = filtered_categories
+            self.categories = list(filtered_categories)
 
     def fill_invalid(self, categories:list):
         valid_categories = []
@@ -343,10 +275,9 @@ class CategoryOneHot(Encoder):
         to_encode = to_encode.apply(lambda x: x if isinstance(x, list) else [x])
         to_encode = to_encode.apply(lambda x: self.fill_invalid(x))
         from sklearn.preprocessing import MultiLabelBinarizer
-        mlb = MultiLabelBinarizer()
+        mlb = MultiLabelBinarizer(classes=self.categories+[self.invalid_category_repre])
         encoded_col = mlb.fit_transform(to_encode)
-        result = pd.DataFrame(data={self.__repr__()+"|"+str(cat): encoded_col[:, i]
-                                    for cat, i in zip(mlb.classes_, range(encoded_col.shape[0]))}, index=to_encode.index)
+        result = pd.DataFrame(encoded_col, columns=[self.__repr__()+"|"+str(cat) for cat in mlb.classes_], index=to_encode.index)
 
         return result
     
@@ -354,7 +285,7 @@ class CategoryOneHot(Encoder):
         return (f"{self.__class__.__name__}("
                 f"categories={self.categories},"
                 f"invalid_category_repre={self.invalid_category_repre},"
-                f"valid_category_regex={self.valid_category_regex}"
+                f"valid_category_regex={self.valid_category_regex}, "
                 f"multi_categories={self.multi_categories})")
 
 
@@ -364,7 +295,7 @@ class ContainRegex(Encoder):
     Encode a Series of strings to boolean values. True if the string match the given regex or not.
     """
     def __init__(self, regex):
-        super(ContainRegex, self).__init__(mean=0, std=1, fit_normalize=False) # The data of this encoder shouldn't be normalized.
+        super(ContainRegex, self).__init__()
         self.regex = regex
 
     def __call__(self, to_encode: pd.Series):
@@ -384,7 +315,7 @@ class HasLabels(Encoder):
         Args:
             additional_regex: Additional regex to consider
         """
-        super(HasLabels, self).__init__(mean=0, std=1, fit_normalize=False) # The data of this encoder shouldn't be normalized.
+        super(HasLabels, self).__init__()
         self.additional_regex = set(additional_regex)
         regex_list = {"\[.*\]", "^([A-Z|a-z]+:)+.*$"}
         regex_list.update(self.additional_regex)
@@ -410,7 +341,7 @@ class HasEmoji(Encoder):
     english_emojies = UNICODE_EMOJI['en']
 
     def __init__(self):
-        super(HasEmoji, self).__init__(mean=0, std=1, fit_normalize=False) # The data of this encoder shouldn't be normalized.
+        super(HasEmoji, self).__init__()
 
     def _contain_emoji(self, s):
         for c in s:

@@ -24,7 +24,7 @@ setuptools.setup(
     description="Package for features extraction and encoding",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/perceptionpoint/DetectionUtils",
+    url="https://github.com/lotanbl/features_extractor",
     package_dir={"": "src"},
     packages=setuptools.find_packages(where="src"),
     python_requires=">=3.8",

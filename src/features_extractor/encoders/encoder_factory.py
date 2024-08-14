@@ -1,5 +1,5 @@
 import logging
-from DetectionUtilities.feature_extractor import parser_utils
+from features_extractor import parser_utils
 import pandas as pd
 import re
 
@@ -66,7 +66,7 @@ def build_encoders_dict_from_metadata(metadata_df:pd.DataFrame, names_column:str
 
 
 
-def run_encoders_from_metadata(to_encode:pd.DataFrame, metadata_df:pd.DataFrame, names_column:str, encoder_column:str, fit_and_normalize=False, normalize=False)->pd.DataFrame:
+def run_encoders_from_metadata(to_encode:pd.DataFrame, metadata_df:pd.DataFrame, names_column:str, encoder_column:str)->pd.DataFrame:
     """
     Encodes a DataFrame according to the provided metadata file. This function creates a list of encoders for each column
     based on the metadata, then applies the encoder to generate encoded columns. If a column is not found in the
@@ -80,31 +80,49 @@ def run_encoders_from_metadata(to_encode:pd.DataFrame, metadata_df:pd.DataFrame,
             that should be encoded.
         encoder_column (str): The name of the column in `metadata_df` that contains the corresponding encoder representations
             for each column to encode.
-        fit_and_normalize (bool): If `True`, after encoding a column, the encoder will run `encoder.fit_and_normalize`
-            on the encoded data.
-        normalize (bool): If `True`, after encoding a column, the encoder will run `encoder.normalize` on the encoded data.
 
     Returns:
         pd.DataFrame: The encoded data.
     """
     col2encoders = build_encoders_dict_from_metadata(metadata_df, names_column, encoder_column)
+    # result = []
+    # for feature_col in to_encode:
+    #     if feature_col in col2encoders:
+    #         encoders = col2encoders[feature_col]
+    #         if encoders is not None:
+    #             for encoder in encoders:
+    #                 # print("Run encoder ", encoder, " on feature ", feature_col)
+
+    #                 encoder.fit(to_encode[feature_col])
+
+    #                 encoded_df = encoder(to_encode[feature_col])
+    #                 remaned_cols = {encoder_name: feature_col + "|" + encoder_name for encoder_name in encoded_df.columns}
+    #                 encoded_df.rename(columns=remaned_cols, inplace=True)
+    #                 result.append(encoded_df)
+    #         else:
+    #             logging.warning(f"[Encoder] col {feature_col} doesnt have encoder in metadata - add the original column")
+    #             result.append(to_encode[[feature_col]])
+    #     else:
+    #         logging.warning(f"[Encoder] columns {feature_col} doesnt exist in encoding metadata - add the original column")
+    #         result.append(to_encode[[feature_col]])
+    # return pd.concat(result, axis=1)
+    return encode_by_encoders_dict(to_encode, col2encoders)
+
+
+def encode_by_encoders_dict(to_encode:pd.DataFrame, col2encoders:dict):
     result = []
     for feature_col in to_encode:
         if feature_col in col2encoders:
             encoders = col2encoders[feature_col]
             if encoders is not None:
                 for encoder in encoders:
-                    print(encoders, feature_col)
+                    # print("Run encoder ", encoder, " on feature ", feature_col)
 
                     encoder.fit(to_encode[feature_col])
 
                     encoded_df = encoder(to_encode[feature_col])
                     remaned_cols = {encoder_name: feature_col + "|" + encoder_name for encoder_name in encoded_df.columns}
                     encoded_df.rename(columns=remaned_cols, inplace=True)
-                    if fit_and_normalize:
-                        encoded_df = encoder.fit_and_normalize(encoded_df)
-                    elif normalize:
-                        encoded_df = encoder.normalize(encoded_df)
                     result.append(encoded_df)
             else:
                 logging.warning(f"[Encoder] col {feature_col} doesnt have encoder in metadata - add the original column")
